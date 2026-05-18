@@ -1,0 +1,25 @@
+# Environment 
+.env
+*.env
+
+# Python 
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Data 
+data/repos/
+data/vectorstore/
+
+# Virtual Environments 
+venv/
+.venv/
+env/
+ENV/

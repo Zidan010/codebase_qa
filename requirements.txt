@@ -1,0 +1,33 @@
+# ─────────────────────────────────────────────────────────────
+#  codebase_qa — Python Dependencies
+#  Install: pip install -r requirements.txt
+# ─────────────────────────────────────────────────────────────
+
+# ── LLM ──────────────────────────────────────────────────────
+groq
+
+# ── Embeddings (local, no API key needed) ────────────────────
+sentence-transformers
+
+# ── Vector Store ─────────────────────────────────────────────
+chromadb
+
+# ── Agentic Framework ────────────────────────────────────────
+langgraph
+langchain-core
+
+# ── Environment & Config ─────────────────────────────────────
+python-dotenv
+
+# ── Git (for cloning repo at runtime) ────────────────────────
+gitpython
+
+# ── CLI UI ───────────────────────────────────────────────────
+rich         # beautiful terminal output
+
+# ── Web UI (Phase 2) ─────────────────────────────────────────
+streamlit
+
+# ── Utilities ────────────────────────────────────────────────
+pathlib2
+typing-extensions
