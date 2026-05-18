@@ -41,6 +41,7 @@ def check_python_version() -> None:
 def run_setup(force_reindex: bool = False) -> None:
     """Clone repo and build vector index."""
     from core.config import validate_config
+    from core.ingestion.cloner import clone_repository
 
     errors = validate_config()
     if errors:
@@ -49,6 +50,7 @@ def run_setup(force_reindex: bool = False) -> None:
         sys.exit(1)
 
     console.print("\n[bold cyan]Step 1/2:[/] Checking repository...")
+    clone_repository()
 
     console.print("\n[bold cyan]Step 2/2:[/] Checking vector index...")
 
