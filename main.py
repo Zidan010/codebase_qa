@@ -42,6 +42,7 @@ def run_setup(force_reindex: bool = False) -> None:
     """Clone repo and build vector index."""
     from core.config import validate_config
     from core.ingestion.cloner import clone_repository
+    from core.ingestion.indexer import build_index
 
     errors = validate_config()
     if errors:
@@ -53,6 +54,7 @@ def run_setup(force_reindex: bool = False) -> None:
     clone_repository()
 
     console.print("\n[bold cyan]Step 2/2:[/] Checking vector index...")
+    build_index(force_reindex=force_reindex)
 
     console.print(
         "\n[bold green]✓ Setup complete![/] "

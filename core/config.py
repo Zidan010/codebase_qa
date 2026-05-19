@@ -48,6 +48,10 @@ BINARY_EXTENSIONS = {
     ".pdf", ".docx", ".xlsx", ".mp4", ".mp3",
 }
 
+MAX_CHUNK_LINES = 80
+MIN_CHUNK_LINES = 3
+CHUNK_OVERLAP_LINES = 5
+
 #  Validation 
 def validate_config() -> list[str]:
     """Validate critical config values. Returns list of error messages."""
