@@ -64,7 +64,8 @@ def run_setup(force_reindex: bool = False) -> None:
 
 def run_cli() -> None:
     """Launch the conversational CLI."""
-
+    from cli import start_cli
+    start_cli()
 
 def main() -> None:
     check_python_version()

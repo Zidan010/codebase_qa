@@ -97,7 +97,7 @@ class ChromaStore:
             metadata={"hnsw:space": "cosine"},
         )
 
-        #  Embedding model
+        #  Embedding model (local, no API key) 
         console.print(
             f"[dim]Loading embedding model:[/] {EMBEDDING_MODEL} "
             f"[dim](device: {EMBEDDING_DEVICE})[/]"
@@ -223,6 +223,21 @@ class ChromaStore:
 
         if not query_text or not query_text.strip():
             return []
+
+        # Validate filters — only allow keys that actually exist in our schema
+        # This prevents ChromaDB "Invalid where clause" errors when the LLM
+        # invents filter keys like "file_path" that don't exist in our metadata
+        VALID_FILTER_KEYS = {
+            "source", "file_name", "extension", "chunk_type",
+            "symbol_name", "parent_class", "module", "language",
+        }
+        if filters:
+            filters = {
+                k: v for k, v in filters.items()
+                if k in VALID_FILTER_KEYS and isinstance(v, (str, int, float, bool))
+            }
+            if not filters:
+                filters = None
 
         # Embed the query
         query_embedding = self._embedder.encode(

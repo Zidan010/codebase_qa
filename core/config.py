@@ -16,6 +16,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data"
 REPO_DIR = DATA_DIR / "repos"
 VECTORSTORE_DIR = DATA_DIR / "vectorstore"
+EMBEDDING_MODEL_PATH = BASE_DIR / "embedding_model"
 
 #  Target Repository 
 REPO_URL = "https://github.com/psf/requests.git"
@@ -51,6 +52,33 @@ BINARY_EXTENSIONS = {
 MAX_CHUNK_LINES = 80
 MIN_CHUNK_LINES = 3
 CHUNK_OVERLAP_LINES = 5
+
+#  Agent Config 
+MAX_TOOL_CALLS_PER_QUERY = 6
+MAX_ITERATIONS = 10
+
+#  Feature Flags 
+# Toggle retrieval critic disable if hitting Groq rate limits during demo
+ENABLE_CRITIC = True
+
+#  Tool Config 
+SEARCH_DEFAULT_TOP_K = 5
+READ_FILE_MAX_LINES = 300
+LIST_DIR_MAX_DEPTH = 4
+FIND_USAGES_MAX_RESULTS = 20
+TRACE_CALL_DEPTH = 2
+
+#  CLI Config 
+CLI_SHOW_TRACE = True
+CLI_SHOW_TOOLS = True
+
+#  Scope Guard 
+REPO_DESCRIPTION = "psf/requests Python HTTP library"
+SCOPE_REJECTION_MESSAGE = (
+    "This system is scoped exclusively to the `psf/requests` codebase. "
+    "I cannot answer questions outside this repository. "
+    "Please ask something about the requests library's code, architecture, or API."
+)
 
 #  Validation 
 def validate_config() -> list[str]:
