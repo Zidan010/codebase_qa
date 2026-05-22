@@ -41,6 +41,7 @@ from core.config import (
     CHROMA_PERSIST_DIR,
     EMBEDDING_MODEL,
     EMBEDDING_DEVICE,
+    EMBEDDING_MODEL_PATH,
 )
 
 console = Console()
@@ -105,6 +106,7 @@ class ChromaStore:
         self._embedder = SentenceTransformer(
             EMBEDDING_MODEL,
             device=EMBEDDING_DEVICE,
+            cache_folder=str(EMBEDDING_MODEL_PATH),
         )
 
         self._initialised = True

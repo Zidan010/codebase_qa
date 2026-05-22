@@ -26,7 +26,7 @@ from rich.text import Text
 console = Console()
 
 
-#  Commands 
+# Commands
 COMMANDS = {
     "/quit":  "Exit the program",
     "/exit":  "Exit the program",
@@ -45,9 +45,9 @@ def start_cli() -> None:
     Called from main.py after setup completes.
     """
     from core.utils.formatter import print_welcome, print_thinking, render_response, print_error
-    from core.agent.graph import run_query
+    from core.agent.graph import run_query_stream
 
-    #  Session state 
+    # Session state  
     conversation_history: list[dict] = []
     repo_context: str = ""           # cached after first query
     show_trace: bool  = True
@@ -57,7 +57,7 @@ def start_cli() -> None:
     print_welcome()
     _print_help()
 
-    #  Main loop 
+    # Main loop  
     while True:
         try:
             # Prompt
@@ -74,11 +74,11 @@ def start_cli() -> None:
 
         query = raw.strip()
 
-        #  Skip empty input 
+        # Skip empty input  
         if not query:
             continue
 
-        #  Handle commands 
+        # Handle commands  
         if query.startswith("/"):
             cmd = query.lower().split()[0]
             handled = _handle_command(
@@ -98,14 +98,31 @@ def start_cli() -> None:
                 show_tools = handled.get("show_tools", show_tools)
             continue
 
-        #  Run agent 
+        #  Run agent with live streaming trace 
         print_thinking()
 
+        # Node → colour for live trace display
+        NODE_COLOURS = {
+            "repo_context": "blue",
+            "intent":       "cyan",
+            "tool":         "yellow",
+            "critic":       "magenta",
+            "answer":       "green",
+        }
+
+        def _live_trace(node_name: str, step: str):
+            """Called after each node completes — prints trace line live."""
+            if not show_trace:
+                return
+            colour = NODE_COLOURS.get(node_name, "dim")
+            console.print(f"  [{colour}]{step}[/]")
+
         try:
-            result = run_query(
+            result = run_query_stream(
                 query=query,
                 conversation_history=conversation_history,
                 repo_context=repo_context,
+                on_trace=_live_trace,
             )
         except KeyboardInterrupt:
             console.print("\n[yellow]⚠ Query interrupted.[/]")
@@ -118,8 +135,8 @@ def start_cli() -> None:
         if not repo_context and result.get("repo_context"):
             repo_context = result["repo_context"]
 
-        #  Render response 
-        render_response(result, show_trace=show_trace, show_tools=show_tools)
+        #  Render response (trace already printed live above) 
+        render_response(result, show_trace=show_trace, show_tools=show_tools, skip_trace=show_trace)
 
         #  Update conversation history 
         # Only update history for in-scope questions
@@ -233,14 +250,24 @@ def _print_status(
     repo_context: str,
 ) -> None:
     """Print current session status."""
+    # Get live chunk count from vector store instead of hardcoding
+    try:
+        from core.vectorstore.chroma_store import get_store
+        chunk_count = get_store().count()
+        vs_status = f"[green]✓ {chunk_count:,} chunks indexed[/]"
+    except Exception:
+        vs_status = "[dim]unavailable[/]"
+
     ctx_status = (
-        f"[green]cached ({len(repo_context)} chars)[/]"
-        if repo_context else "[yellow]not built yet[/]"
+        f"[green]✓ ready ({len(repo_context)} chars)[/]"
+        if repo_context
+        else "[dim]built on first query[/]"
     )
     console.print(Panel(
         f"[bold]Session Status[/]\n\n"
         f"  Queries asked:      [cyan]{query_count}[/]\n"
         f"  History turns:      [cyan]{len(history)}[/]\n"
+        f"  Vector store:       {vs_status}\n"
         f"  Repo context:       {ctx_status}\n"
         f"  Show trace:         [cyan]{'ON' if show_trace else 'OFF'}[/]\n"
         f"  Show tools:         [cyan]{'ON' if show_tools else 'OFF'}[/]\n"
