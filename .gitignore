@@ -17,6 +17,7 @@ build/
 # Data 
 data/repos/
 data/vectorstore/
+embedding_model/
 
 # Virtual Environments 
 venv/
