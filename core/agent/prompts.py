@@ -24,11 +24,9 @@ Classify the user's question about the psf/requests codebase.
 
 USER QUESTION: {query}
 
-CONVERSATION HISTORY (last 2 turns):
-{history}
-
-IMPORTANT: If the query contains pronouns like "that", "it", "this function",
-"that method" — resolve them using the CONVERSATION HISTORY above before classifying.
+NOTE: Prior conversation turns are passed as message history above this prompt.
+If the query contains pronouns like "that", "it", "this function", "that method" —
+resolve them using the conversation history before classifying.
 For example: "What calls that function?" after discussing Session.resolve_redirects
 should be treated as "What calls Session.resolve_redirects?"
 
@@ -89,8 +87,8 @@ USER QUESTION: {query}
 INTENT: {intent}
 REPO CONTEXT: {repo_context}
 
-CONVERSATION CONTEXT (use this to resolve pronouns like "that", "it", "this function"):
-{conversation_context}
+NOTE: Prior conversation turns are passed as message history above this prompt.
+If the query uses pronouns (that, it, this function) resolve them from history.
 
 TOOLS ALREADY CALLED AND THEIR RESULTS:
 {tool_results_so_far}
@@ -112,6 +110,12 @@ CRITICAL RULES FOR search_code filters:
 - Example valid: {{"language": "python"}} or {{"chunk_type": "function"}}
 - Example invalid: {{"file_path": "src/requests/*"}} — NEVER do this
 
+CRITICAL RULES FOR module names (summarize_module, get_dependencies, search_code module filter):
+- The repo uses a src/ layout: files live at src/requests/sessions.py
+- Use short dotted names WITHOUT "src." prefix: "requests.sessions", "requests.adapters"
+- Examples: "requests.sessions", "requests.adapters", "requests.auth", "requests.models"
+- Do NOT use: "src.requests.sessions" — the tools resolve src/ automatically
+
 Respond with ONLY a JSON object. No markdown. No explanation.
 
 {{
@@ -131,6 +135,7 @@ Rules:
 - Be specific with args (e.g. use exact file paths from previous results)
 - If a previous search returned good results, use read_file to get full content
 - If query uses pronouns (that, it, this), resolve them from CONVERSATION CONTEXT first
+- For "how to install/run/setup" questions: search for README, pyproject.toml, or CONTRIBUTING files first.
 """
 
 
@@ -169,8 +174,8 @@ Answer the user's question about the psf/requests codebase using ONLY the provid
 
 USER QUESTION: {query}
 
-CONVERSATION HISTORY:
-{history}
+NOTE: Prior conversation turns are passed as message history above this prompt.
+Use conversation history to understand follow-up context (e.g. "that method", "it").
 
 REPO CONTEXT:
 {repo_context}

@@ -1,6 +1,6 @@
 """
 graph.py
-
+ 
 LangGraph agent graph definition.
 
 Graph topology:
@@ -73,7 +73,7 @@ def route_after_tool(state: AgentState) -> str:
     return "critic"
 
 
-# Graph builder 
+# Graph builder  
 
 def build_graph() -> StateGraph:
     """
@@ -84,17 +84,17 @@ def build_graph() -> StateGraph:
     """
     graph = StateGraph(AgentState)
 
-    # Register nodes 
+    # Register nodes  
     graph.add_node("repo_context", repo_context_node)
     graph.add_node("intent",       intent_node)
     graph.add_node("tool",         tool_node)
     graph.add_node("critic",       critic_node)
     graph.add_node("answer",       answer_node)
 
-    # Entry point 
+    # Entry point  
     graph.set_entry_point("repo_context")
 
-    # Edges 
+    # Edges  
     graph.add_edge("repo_context", "intent")
 
     graph.add_conditional_edges(
@@ -128,7 +128,7 @@ def build_graph() -> StateGraph:
     return graph.compile()
 
 
-# Module-level compiled graph singleton
+# Module-level compiled graph singleton  
 _graph = None
 
 def get_graph():
@@ -139,7 +139,7 @@ def get_graph():
     return _graph
 
 
-# Main query function
+# ─── Main query function 
 
 def run_query(
     query: str,
@@ -148,36 +148,11 @@ def run_query(
 ) -> dict:
     """
     Run a user query through the agent graph.
-
-    Args:
-        query:                The user's question.
-        conversation_history: Prior turns [{role, content}].
-        repo_context:         Cached repo context from prior run (skip rebuild).
-
-    Returns:
-        Final AgentState dict containing:
-          final_answer, sources, reasoning_trace, intent,
-          is_in_scope, tool_results, tool_calls_made, etc.
+    Returns the final state dict after all nodes complete.
+    For live trace output use run_query_stream() instead.
     """
     graph = get_graph()
-
-    initial_state: AgentState = {
-        "query":               query,
-        "conversation_history": conversation_history or [],
-        "intent":              "",
-        "is_in_scope":         True,
-        "scope_reason":        "",
-        "repo_context":        repo_context,
-        "tools_to_use":        [],
-        "tool_results":        [],
-        "tool_calls_made":     0,
-        "reasoning_trace":     [],
-        "evidence_sufficient": True,
-        "critic_notes":        "",
-        "final_answer":        "",
-        "sources":             [],
-        "error":               "",
-    }
+    initial_state = _build_initial_state(query, conversation_history, repo_context)
 
     try:
         final_state = graph.invoke(initial_state)
@@ -186,9 +161,100 @@ def run_query(
         return {
             **initial_state,
             "final_answer": (
-                f"## Answer\nAn unexpected error occurred while processing your query.\n\n"
+                f"## Answer\nAn unexpected error occurred.\n\n"
                 f"## Error\n{e}\n\n"
                 f"## Suggestion\nPlease try rephrasing your question."
             ),
             "error": str(e),
         }
+
+
+def run_query_stream(
+    query: str,
+    conversation_history: list[dict] | None = None,
+    repo_context: str = "",
+    on_trace: callable = None,
+):
+    """
+    Run a query with live streaming — calls on_trace(step) after each
+    node completes so the CLI can print reasoning steps in real time.
+
+    Args:
+        query:                The user's question.
+        conversation_history: Prior turns [{role, content}].
+        repo_context:         Cached repo context.
+        on_trace:             Callback(step: str) called for each new
+                              trace line as it arrives. Use to print live.
+
+    Returns:
+        Final AgentState dict (same as run_query).
+    """
+    graph = get_graph()
+    initial_state = _build_initial_state(query, conversation_history, repo_context)
+    final_state = initial_state.copy()
+    seen_trace = set()
+
+    try:
+        # stream_mode="updates" yields {node_name: state_update} after each node
+        for chunk in graph.stream(initial_state, stream_mode="updates"):
+            for node_name, update in chunk.items():
+                # LangGraph yields None when a node returns {} (empty dict)
+                if update is None:
+                    continue
+
+                # Extract new trace lines from this node's update
+                new_traces = update.get("reasoning_trace", [])
+                for step in new_traces:
+                    if step not in seen_trace:
+                        seen_trace.add(step)
+                        if on_trace:
+                            on_trace(node_name, step)
+
+                # Merge update into final_state
+                for key, value in update.items():
+                    if value is None:
+                        # Never overwrite existing state with None — skip
+                        continue
+                    if isinstance(value, list) and isinstance(final_state.get(key), list):
+                        # LangGraph Annotated lists — extend, don't overwrite
+                        final_state[key] = final_state.get(key, []) + value
+                    else:
+                        final_state[key] = value
+
+        return final_state
+
+    except Exception as e:
+        return {
+            **initial_state,
+            "final_answer": (
+                f"## Answer\nAn unexpected error occurred.\n\n"
+                f"## Error\n{e}\n\n"
+                f"## Suggestion\nPlease try rephrasing your question."
+            ),
+            "error": str(e),
+        }
+
+
+def _build_initial_state(
+    query: str,
+    conversation_history: list[dict] | None,
+    repo_context: str,
+) -> dict:
+    """Build the initial AgentState dict."""
+    return {
+        "query":                query,
+        "conversation_history": conversation_history or [],
+        "intent":               "",
+        "is_in_scope":          True,
+        "scope_reason":         "",
+        "repo_context":         repo_context,
+        "tools_to_use":         [],
+        "tool_results":         [],
+        "tool_calls_made":      0,
+        "reasoning_trace":      [],
+        "evidence_sufficient":  True,
+        "critic_notes":         "",
+        "final_answer":         "",
+        "sources":              [],
+        "error":                "",
+    }

@@ -98,21 +98,15 @@ def repo_context_node(state: AgentState) -> dict:
 
 def intent_node(state: AgentState) -> dict:
     """Classify query intent and determine if it's in scope."""
-    query = state["query"]
+    query   = state["query"]
     history = state.get("conversation_history", [])
 
-    # Format last 2 turns of history for context
-    history_text = "\n".join(
-        f"{t['role'].upper()}: {t['content'][:200]}"
-        for t in history[-4:]   # last 2 turns = 4 messages
-    ) if history else "None"
+    # Pass history natively to Groq — the model reads prior turns as actual
+    # conversation context, so it correctly resolves "that function", "it", etc.
+    # The prompt only contains the current query — no flat text history dump.
+    prompt = INTENT_CLASSIFIER_PROMPT.format(query=query)
 
-    prompt = INTENT_CLASSIFIER_PROMPT.format(
-        query=query,
-        history=history_text,
-    )
-
-    result = call_llm_json(prompt, system=SYSTEM_BASE)
+    result = call_llm_json(prompt, system=SYSTEM_BASE, history=history)
 
     # Handle LLM errors gracefully
     if "error" in result:
@@ -163,30 +157,27 @@ def tool_node(state: AgentState) -> dict:
     # Safety: enforce max tool calls
     if calls_made >= MAX_TOOL_CALLS_PER_QUERY:
         return {
+            "tool_results": [],
             "reasoning_trace": [
                 f"[Tools] Max tool calls ({MAX_TOOL_CALLS_PER_QUERY}) reached. Stopping."
             ],
         }
 
-    # Build conversation context for pronoun resolution
-    # e.g. "What calls that function?" needs prior context to know which function
-    conversation_context = "\n".join(
-        f"{t['role'].upper()}: {t['content'][:300]}"
-        for t in history[-4:]
-    ) if history else "No prior conversation."
-
     # Summarise prior results for the selector prompt
     results_summary = _summarize_tool_results(tool_results)
 
+    # History is passed natively to Groq — no need to embed as text.
+    # The model sees prior turns as actual conversation messages,
+    # so "What calls that function?" correctly resolves "that function"
+    # from the prior assistant answer.
     prompt = TOOL_SELECTOR_PROMPT.format(
         query=query,
         intent=intent,
         repo_context=repo_context[:500],
         tool_results_so_far=results_summary,
-        conversation_context=conversation_context,
     )
 
-    selection = call_llm_json(prompt, system=SYSTEM_BASE)
+    selection = call_llm_json(prompt, system=SYSTEM_BASE, history=history)
 
     if "error" in selection:
         # Fallback: do a basic semantic search
@@ -206,6 +197,7 @@ def tool_node(state: AgentState) -> dict:
 
     if not should_continue or not tool_calls:
         return {
+            "tool_results": [],
             "reasoning_trace": [
                 f"[Tools] Selector decided no more tools needed. Reason: {reasoning}"
             ],
@@ -239,7 +231,7 @@ def tool_node(state: AgentState) -> dict:
 
     return {
         "tool_results":    new_results,
-        "tool_calls_made": calls_made + len(tool_calls),
+        "tool_calls_made": calls_made + len(new_results),
         "reasoning_trace": trace_msgs,
     }
 
@@ -343,21 +335,18 @@ def answer_node(state: AgentState) -> dict:
     #  Build evidence text 
     evidence_text = _format_evidence_for_answer(tool_results)
     trace_text    = "\n".join(reasoning_trace[-10:])  # last 10 trace steps
-    history_text  = "\n".join(
-        f"{t['role'].upper()}: {t['content'][:300]}"
-        for t in history[-4:]
-    ) if history else "None"
 
+    # History passed natively to Groq — model understands conversation
+    # context directly. Prompt only contains current query + evidence.
     prompt = ANSWER_PROMPT.format(
         system=SYSTEM_BASE,
         query=query,
-        history=history_text,
         repo_context=repo_context[:600],
         evidence=evidence_text[:5000],
         trace=trace_text,
     )
 
-    answer = call_llm(prompt, system=SYSTEM_BASE)
+    answer = call_llm(prompt, system=SYSTEM_BASE, history=history)
 
     if answer.startswith("ERROR:"):
         answer = (

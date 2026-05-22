@@ -21,6 +21,9 @@ from core.config import (
 console = Console()
 _client: Groq | None = None
 
+# Max history messages to pass per call (3 exchanges = 6 messages)
+HISTORY_WINDOW = 6
+
 
 def get_client() -> Groq:
     """Return the global Groq client singleton."""
@@ -28,6 +31,60 @@ def get_client() -> Groq:
     if _client is None:
         _client = Groq(api_key=GROQ_API_KEY)
     return _client
+
+
+def prepare_history(history: list[dict] | None) -> list[dict]:
+    """
+    Sanitize and window conversation history before passing to Groq API.
+
+    - Takes last HISTORY_WINDOW messages (3 exchanges = 6 messages)
+    - Ensures roles are valid: "user" or "assistant" only
+    - Ensures content is a non-empty string
+    - Truncates individual messages to 800 chars to control token usage
+      (full answers can be long — we only need enough for context)
+    - Ensures history alternates user/assistant correctly
+      (Groq rejects consecutive same-role messages)
+
+    Args:
+        history: Raw conversation history list [{role, content}]
+
+    Returns:
+        Cleaned list ready for Groq messages array.
+    """
+    if not history:
+        return []
+
+    # Take last HISTORY_WINDOW messages
+    windowed = history[-HISTORY_WINDOW:]
+
+    cleaned = []
+    for turn in windowed:
+        role    = turn.get("role", "")
+        content = turn.get("content", "")
+
+        # Only valid Groq roles
+        if role not in ("user", "assistant"):
+            continue
+
+        # Must have content
+        if not isinstance(content, str) or not content.strip():
+            continue
+
+        # Truncate to avoid token bloat — enough for context, not full answer
+        content = content[:800].strip()
+        cleaned.append({"role": role, "content": content})
+
+    # Groq rejects consecutive same-role messages
+    # Deduplicate by removing consecutive duplicates
+    deduped = []
+    for turn in cleaned:
+        if deduped and deduped[-1]["role"] == turn["role"]:
+            # Replace previous with latest same-role message
+            deduped[-1] = turn
+        else:
+            deduped.append(turn)
+
+    return deduped
 
 
 def call_llm(
@@ -41,9 +98,11 @@ def call_llm(
     Call Groq LLM with retry on rate limit.
 
     Args:
-        prompt:      The user message / prompt text.
-        system:      System prompt (optional).
+        prompt:      The current user message / prompt text.
+        system:      System prompt (prepended as system role message).
         history:     Prior conversation turns [{role, content}].
+                     Passed natively as message array to Groq —
+                     LLM understands conversation context properly.
         temperature: Sampling temperature.
         max_tokens:  Max tokens in response.
 
@@ -51,24 +110,25 @@ def call_llm(
         Raw string response from the LLM.
         On unrecoverable error, returns an error string starting with "ERROR:".
     """
-    messages = []
-    if history:
-        messages.extend(history)
-    messages.append({"role": "user", "content": prompt})
+    # Build messages: [history...] + [current user message]
+    prior = prepare_history(history)
+    messages = prior + [{"role": "user", "content": prompt}]
 
     for attempt in range(1, GROQ_MAX_RETRIES + 1):
         try:
             client = get_client()
-            kwargs = dict(
+            # System message goes first if provided
+            final_messages = (
+                [{"role": "system", "content": system}] + messages
+                if system else messages
+            )
+
+            response = client.chat.completions.create(
                 model=GROQ_MODEL,
-                messages=messages,
+                messages=final_messages,
                 temperature=temperature,
                 max_tokens=max_tokens,
             )
-            if system:
-                kwargs["messages"] = [{"role": "system", "content": system}] + messages
-
-            response = client.chat.completions.create(**kwargs)
             return response.choices[0].message.content or ""
 
         except RateLimitError:
