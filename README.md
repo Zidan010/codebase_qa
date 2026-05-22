@@ -810,11 +810,11 @@ codebase_qa/
 
 ## Screenshots
 
-1. `How does Session handle HTTP redirects?` — implementation intent, shows tools + trace + answer![Query 1](screenshots\q1.png)
-2. `What calls that method?` — follow-up turn, shows multi-turn history working![Query 2](screenshots\q2.png)
-3. `Trace the call flow of Session.request` — call_flow intent, shows call diagram![Query 3](screenshots\q3.png)
-4. `What does requests.sessions depend on?` — dependency intent![Query 4](screenshots\q4.png)
-5. `What is the capital of France?` — out-of-scope guard working![Query 5](screenshots\q5.png)
+1. `How does Session handle HTTP redirects?` — implementation intent, shows tools + trace + answer![Query 1](screenshots/q1.png)
+2. `What calls that method?` — follow-up turn, shows multi-turn history working![Query 2](screenshots/q2.png)
+3. `Trace the call flow of Session.request` — call_flow intent, shows call diagram![Query 3](screenshots/q3.png)
+4. `What does requests.sessions depend on?` — dependency intent![Query 4](screenshots/q4.png)
+5. `What is the capital of France?` — out-of-scope guard working![Query 5](screenshots/q5.png)
 
 ---
 
