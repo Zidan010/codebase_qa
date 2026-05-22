@@ -49,8 +49,24 @@ def search_code(
 
     top_k = max(1, min(top_k, 20))   # clamp 1–20
 
+    # Normalize module filter: the vector store indexes modules with their
+    # full path-based name (e.g. "src.requests.sessions"). If the LLM passes
+    # "requests.sessions" (without the "src." prefix), try both variants.
+    filters_to_try = [filters]
+    if filters and "module" in filters:
+        raw_module = filters["module"]
+        # If it doesn't already start with "src.", add a fallback with "src." prefix
+        if not raw_module.startswith("src."):
+            alt_filters = dict(filters)
+            alt_filters["module"] = f"src.{raw_module}"
+            filters_to_try = [alt_filters, filters]  # try src. version first
+
     store = get_store()
-    raw = store.query(query.strip(), top_k=top_k, filters=filters)
+    raw = None
+    for f in filters_to_try:
+        raw = store.query(query.strip(), top_k=top_k, filters=f)
+        if raw:
+            break
 
     if not raw:
         return {

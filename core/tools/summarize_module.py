@@ -220,47 +220,71 @@ def _extract_public_api(
 def _resolve_module_path(module_name: str, repo_root: Path) -> Path | None:
     """
     Convert a module name to a file path. Tries multiple strategies:
-    1. Exact dotted path: requests.sessions → requests/sessions.py
-    2. Filename match: sessions.py or sessions
-    3. Partial name match (last segment)
+    1. Exact dotted path:      requests.sessions → requests/sessions.py
+    2. src-layout dotted path: requests.sessions → src/requests/sessions.py
+    3. Filename stem match:    sessions → **/sessions.py  (prefer src/ over tests/)
+    4. Partial name match:     sess → **/sessions.py      (prefer src/ over tests/)
     """
-    # Strategy 1: dotted module path
+    # Strategy 1: exact dotted path from repo root
     as_path = module_name.replace(".", "/")
-    candidates = [
+    for candidate in [
         repo_root / f"{as_path}.py",
         repo_root / as_path / "__init__.py",
-    ]
-    for c in candidates:
-        if c.exists():
-            return c
+    ]:
+        if candidate.exists():
+            return candidate
 
-    # Strategy 2: filename match (strip .py if present)
+    # Strategy 2: src-layout — try prepending "src/"
+    for candidate in [
+        repo_root / "src" / f"{as_path}.py",
+        repo_root / "src" / as_path / "__init__.py",
+    ]:
+        if candidate.exists():
+            return candidate
+
+    # Strategy 3: filename stem match — collect all matches, prefer src/ paths
     name = module_name.rstrip(".py") if module_name.endswith(".py") else module_name
-    name_lower = name.lower()
+    # Use only the last segment for stem matching (e.g. "requests.sessions" → "sessions")
+    stem = name.split(".")[-1].lower()
 
-    for py_file in repo_root.rglob("*.py"):
-        if py_file.stem.lower() == name_lower:
-            return py_file
+    matches = [f for f in repo_root.rglob("*.py") if f.stem.lower() == stem]
+    if matches:
+        # Prefer files under src/, then repo package dirs, then tests last
+        return _rank_matches(matches, repo_root)[0]
 
-    # Strategy 3: partial name match
-    for py_file in repo_root.rglob("*.py"):
-        if name_lower in py_file.stem.lower():
-            return py_file
+    # Strategy 4: partial stem match — last resort, prefer src/ paths
+    partial = [f for f in repo_root.rglob("*.py") if stem in f.stem.lower()]
+    if partial:
+        return _rank_matches(partial, repo_root)[0]
 
     return None
 
 
+def _rank_matches(matches: list[Path], repo_root: Path) -> list[Path]:
+    """
+    Sort candidate paths: src/ files first, then package dirs, tests last.
+    This prevents test files like test_requests.py from shadowing sessions.py.
+    """
+    def priority(p: Path) -> int:
+        parts = p.relative_to(repo_root).parts
+        if "src" in parts:
+            return 0   # src layout — highest priority
+        if parts[0].startswith("test"):
+            return 2   # test dirs — lowest priority
+        return 1       # everything else
+
+    return sorted(matches, key=priority)
+
+
 def _suggest_modules(name: str, repo_root: Path) -> list[str]:
-    """Suggest similar module names."""
-    suggestions = []
-    name_lower = name.lower()
-    for py_file in repo_root.rglob("*.py"):
-        if name_lower[:4] in py_file.stem.lower():
-            rel = str(py_file.relative_to(repo_root))
-            suggestions.append(rel)
-            if len(suggestions) >= 3:
-                break
-    return suggestions
+    """Suggest similar module names, preferring src/ files."""
+    stem = name.split(".")[-1].lower()
+    candidates = [
+        f for f in repo_root.rglob("*.py")
+        if stem[:4] in f.stem.lower()
+    ]
+    ranked = _rank_matches(candidates, repo_root)[:3]
+    return [str(f.relative_to(repo_root)) for f in ranked]
 
 
 def _path_to_module(file_path: Path, repo_root: Path) -> str:

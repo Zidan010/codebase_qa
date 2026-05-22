@@ -195,31 +195,60 @@ def _build_tree(module: str, internal: list, stdlib: list, third_party: list) ->
 #  Path helpers 
 
 def _resolve_module(name: str, repo_root: Path) -> Path | None:
+    """
+    Resolve a module name to its file path.
+    Handles both flat layout (requests/sessions.py) and
+    src layout (src/requests/sessions.py). Prefers src/ over tests/.
+    """
     as_path = name.replace(".", "/")
+
+    # Strategy 1: exact dotted path from repo root
     for candidate in [
         repo_root / f"{as_path}.py",
         repo_root / as_path / "__init__.py",
     ]:
         if candidate.exists():
             return candidate
-    name_stem = Path(name).stem.lower()
-    for f in repo_root.rglob("*.py"):
-        if f.stem.lower() == name_stem:
-            return f
-    for f in repo_root.rglob("*.py"):
-        if name_stem in f.stem.lower():
-            return f
+
+    # Strategy 2: src-layout
+    for candidate in [
+        repo_root / "src" / f"{as_path}.py",
+        repo_root / "src" / as_path / "__init__.py",
+    ]:
+        if candidate.exists():
+            return candidate
+
+    # Strategy 3: stem match — use last segment only, rank src/ first
+    stem = Path(name).stem.lower().split(".")[-1]
+    matches = [f for f in repo_root.rglob("*.py") if f.stem.lower() == stem]
+    if matches:
+        return _rank_matches(matches, repo_root)[0]
+
+    # Strategy 4: partial stem match
+    partial = [f for f in repo_root.rglob("*.py") if stem in f.stem.lower()]
+    if partial:
+        return _rank_matches(partial, repo_root)[0]
+
     return None
 
 
+def _rank_matches(matches: list[Path], repo_root: Path) -> list[Path]:
+    """Sort candidates: src/ first, test dirs last."""
+    def priority(p: Path) -> int:
+        parts = p.relative_to(repo_root).parts
+        if "src" in parts:
+            return 0
+        if parts[0].startswith("test"):
+            return 2
+        return 1
+    return sorted(matches, key=priority)
+
+
 def _suggest(name: str, repo_root: Path) -> list[str]:
-    results = []
-    for f in repo_root.rglob("*.py"):
-        if name[:4].lower() in f.stem.lower():
-            results.append(str(f.relative_to(repo_root)))
-            if len(results) >= 3:
-                break
-    return results
+    stem = name.split(".")[-1].lower()
+    candidates = [f for f in repo_root.rglob("*.py") if stem[:4].lower() in f.stem.lower()]
+    ranked = _rank_matches(candidates, repo_root)[:3]
+    return [str(f.relative_to(repo_root)) for f in ranked]
 
 
 def _path_to_module(file_path: Path, repo_root: Path) -> str:
